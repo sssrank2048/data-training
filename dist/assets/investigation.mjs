@@ -1,7 +1,7 @@
 // Derived analysis only: every measurement comes from imported case rows.
 import { aggregate, divide, groupRows, scenario } from './analytics.mjs';
 
-export const COURSE_REVISION = 2;
+export const COURSE_REVISION = 3;
 export const DEFAULT_BRAND_TERMS = 'air france, airfrance';
 export const normalizeKeyword = value => String(value || '').normalize('NFKD').replace(/[\u0300-\u036f]/g, '').toLowerCase().replace(/[^\p{L}\p{N}]+/gu, ' ').trim().replace(/\s+/g, ' ');
 export function brandTerms(text = DEFAULT_BRAND_TERMS) {

@@ -49,7 +49,7 @@ test('whole-cent allocations balance and pressure only affects expansion', () =>
   assert.throws(()=>allocateBudget(groups,NaN),/预算/);
 });
 test('submission validity includes course revision and exact data identity', () => {
-  const note={complete:true,courseRevision:2,datasetHash:'file-A'};
+  const note={complete:true,courseRevision:3,datasetHash:'file-A'};
   assert.ok(isSubmitted(note,'file-A'));assert.ok(!isSubmitted(note,'file-B'));assert.ok(!isSubmitted({...note,courseRevision:1},'file-A'));
 });
 const file='data/private/inspected-data.json';

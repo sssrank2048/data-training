@@ -41,7 +41,7 @@ export function investigationController(state, { render, save, toast, download }
     }
     const diagnostic = state.notes.q3?.analysisContext;
     if (state.notes.q3?.datasetHash === hash() && diagnostic) {
-      for (const key of ['publisher', 'query', 'minClicks', 'decompA', 'decompB']) if (diagnostic[key] !== undefined) state[key] = diagnostic[key];
+      for (const key of ['publisher', 'campaign', 'query', 'minClicks', 'decompA', 'decompB']) if (diagnostic[key] !== undefined) state[key] = diagnostic[key];
     }
   }
   function complete(id) {
@@ -52,9 +52,8 @@ export function investigationController(state, { render, save, toast, download }
     if (!note.text?.trim() || assignment.evidence.some(([key]) => !note.evidence?.[key]?.trim())) { toast('请填写分析结论与三项证据。'); return; }
     const prior = lessons.slice(0, lessons.findIndex(l => l.id === id));
     if (prior.some(l => !submitted(l.id))) { toast('请先提交前面题目的当前数据证据。'); return; }
-    if (id === 'q4' && (!note.scenario || note.scenario.signature !== signature() || note.scenario.evidenceChanged)) { toast('请先保存当前的三方案与压力测试；前题证据更新后也需要重新保存。'); return; }
     const references = Object.fromEntries(prior.map(l => [l.id, { submittedAt: state.notes[l.id].submittedAt, evidence: structuredClone(state.notes[l.id].evidence), conclusion: state.notes[l.id].text }]));
-    const context = id === 'q2' ? { brandTerms: state.brandTerms, mixA: state.mixA, mixB: state.mixB, comparison: mixComparison(state.data.rows, state.mixA, state.mixB, state.brandTerms) } : id === 'q3' ? { publisher: state.publisher, query: state.query, minClicks: state.minClicks, decompA: state.decompA, decompB: state.decompB, sensitivity: thresholdSensitivity(filteredRows(state.data.rows, { publisher: state.publisher, query: state.query }), state.minClicks) } : undefined;
+    const context = id === 'q3' ? { publisher: state.publisher, campaign: state.campaign, query: state.query, minClicks: state.minClicks } : undefined;
     state.notes[id] = { ...note, complete: true, courseRevision: COURSE_REVISION, datasetHash: hash(), submittedAt: new Date().toISOString(), references, ...(context ? { analysisContext: context } : {}) };
     save(); render(); toast('证据已提交，可以进入讲评。经营判断仍需讲师评阅。');
   }
@@ -82,7 +81,7 @@ export function investigationController(state, { render, save, toast, download }
     if (action === 'apply-filters') {
       const min = Number(document.querySelector('#min-clicks').value);
       if (!Number.isInteger(min) || min < 0) { toast('点击门槛应为非负整数。'); return true; }
-      state.publisher = document.querySelector('#publisher-filter').value; state.query = document.querySelector('#keyword-query').value; state.minClicks = min; state.page = 0;
+      state.publisher = document.querySelector('#publisher-filter').value; state.campaign = document.querySelector('#campaign-filter').value; state.query = document.querySelector('#keyword-query').value; state.minClicks = min; state.page = 0;
       invalidate('q3'); save(); render(); return true;
     }
     if (action === 'reset-budget' || action === 'seed-roas') {
@@ -150,7 +149,7 @@ export function investigationController(state, { render, save, toast, download }
       text += `### 分析结论\n\n${n.text || '未填写'}\n\n### 三项证据\n\n`;
       for (const [key, label] of assignments[l.id].evidence) text += `- **${label}**：${n.evidence?.[key] || '未填写'}\n\n`;
       if (n.datasetHash) text += `数据 SHA-256：${n.datasetHash}\n\n`;
-      for (const [key, title] of [['references', '前题引用快照'], ['analysisContext', '分析范围与规则'], ['scenario', '已保存的三方案与压力测试']]) if (n[key]) text += `### ${title}\n\n\`\`\`json\n${JSON.stringify(n[key], null, 2)}\n\`\`\`\n\n`;
+      for (const [key, title] of [['evidence', '全部证据字段（含保留的旧版记录）'], ['references', '前题引用快照'], ['analysisContext', '分析范围与规则'], ['scenario', '旧版预算情景记录（非本版必答题）']]) if (n[key]) text += `### ${title}\n\n\`\`\`json\n${JSON.stringify(n[key], null, 2)}\n\`\`\`\n\n`;
     }
     download(text, 'Air-France-经营调查作答.md', 'text/markdown;charset=utf-8');
   }

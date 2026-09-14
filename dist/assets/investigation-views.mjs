@@ -1,7 +1,7 @@
 import { lessons, assignments } from './course.mjs';
 import { aggregate, groupRows, filteredRows, divide } from './analytics.mjs';
 import { esc, num, usd, pct, bars } from './charts.mjs';
-import { mixComparison, classifiedRows, decomposeCPA, thresholdSensitivity, candidateRows, comparePlans, allocateBudget, isSubmitted } from './investigation.mjs';
+import { mixComparison, classifiedRows, decomposeCPA, thresholdSensitivity, candidateRows, comparePlans, allocateBudget, isSubmitted, COURSE_REVISION } from './investigation.mjs';
 
 const options = (groups, value) => groups.map(g => `<option value="${esc(g.name)}" ${g.name === value ? 'selected' : ''}>${esc(g.name)}</option>`).join('');
 const table = (caption, headers, rows) => `<div class="table-scroll"><table><caption>${caption}</caption><thead><tr>${headers.map(h => `<th scope="col">${h}</th>`).join('')}</tr></thead><tbody>${rows.map(row => `<tr>${row.map((v, i) => i === 0 ? `<th scope="row">${v}</th>` : `<td>${v}</td>`).join('')}</tr>`).join('')}</tbody></table></div>`;
@@ -21,14 +21,14 @@ export function investigationViews(state) {
     return `<section class="panel"><div class="eyebrow">贯穿四题的证据</div><h2>这份方案依据什么</h2><div class="evidence-chain">${lessons.slice(0, 3).map(l => `<article><a href="#${l.id}">${l.n} ${l.title}</a><span class="pill ${submitted(l.id) ? 'ready' : 'subtle'}">${submitted(l.id) ? '当前数据 · 已提交' : '待补齐或重新提交'}</span><p>${esc(state.notes[l.id]?.evidence?.[assignments[l.id].evidence.at(-1)[0]] || '先完成本题证据，后续方案才能引用。')}</p></article>`).join('')}</div><p class="small">更换数据或修改前题证据后，需要重新提交后续结论。已有作答文字保留。</p></section>`;
   }
   function gate(id, tab) {
-    if (id === 'q4' && missingPrior().length) return chain() + `<div class="notice"><p>预算答辩需要前三题的当前数据证据。请先提交：${missingPrior().map(l => `<a href="#${l.id}">${l.n} ${l.title}</a>`).join('、')}。</p></div>`;
+    if (id === 'q4' && missingPrior().length) return chain() + `<div class="notice"><p>未来 SEM 建议需要前三题的当前数据证据。请先提交：${missingPrior().map(l => `<a href="#${l.id}">${l.n} ${l.title}</a>`).join('、')}。</p></div>`;
     if (!attempted(id)) return initial(id);
     if (tab === 'reference' && !submitted(id)) return `<section class="panel"><h2>先提交证据，再进入讲评</h2><p>完成分析结论和三项证据后，提交本题。讲评用于检查推理，不替代独立分析。</p><button class="button primary" data-action="tab" data-tab="analysis">回到分析与作答 →</button></section>`;
     return null;
   }
   function note(id) {
     const n = state.notes[id] || {}, a = assignments[id];
-    return `<section class="panel answer-panel"><div class="section-head no-margin"><h2>提交可检查的结论</h2><span>自动保存到此浏览器</span></div>${n.datasetHash && n.datasetHash !== hash() ? '<div class="notice"><p>这份作答来自另一份数据。文字已保留，请核对后重新提交。</p></div>' : ''}<label for="answer-${id}" class="answer-prompt">${a.prompt}</label><textarea id="answer-${id}" data-answer="${id}" rows="7" placeholder="初判如何改变：\n支持证据：\n建议动作：\n不确定性和验证：">${esc(n.text || '')}</textarea><div class="evidence-fields">${a.evidence.map(([key, label]) => `<label>${label}<textarea rows="2" data-evidence="${id}" data-key="${key}" placeholder="写明数值、范围与依据">${esc(n.evidence?.[key] || '')}</textarea></label>`).join('')}</div><div class="notice info"><p>${a.handoff}</p></div><div class="answer-footer"><span class="small" id="save-status">${submitted(id) ? '证据已提交，可进入讲评。修改后需要重新提交。' : '草稿会自动保存；提交前请填写结论与三项证据。'}</span><button class="button primary" data-action="complete" data-id="${id}">${submitted(id) ? '✓ 已提交 · 撤回提交' : '提交本题证据'}</button></div></section>`;
+    return `<section class="panel answer-panel"><div class="section-head no-margin"><h2>提交可检查的结论</h2><span>自动保存到此浏览器</span></div>${n.courseRevision && n.courseRevision !== COURSE_REVISION ? '<div class="notice"><p>四题已按案例主题更新，旧作答文字保留。请核对新题意并重新提交。导出记录会包含旧证据字段。</p></div>' : ''}${n.datasetHash && n.datasetHash !== hash() ? '<div class="notice"><p>这份作答来自另一份数据。文字已保留，请核对后重新提交。</p></div>' : ''}<label for="answer-${id}" class="answer-prompt">${a.prompt}</label><textarea id="answer-${id}" data-answer="${id}" rows="7" placeholder="初判如何改变：\n支持证据：\n建议动作：\n不确定性和验证：">${esc(n.text || '')}</textarea><div class="evidence-fields">${a.evidence.map(([key, label]) => `<label>${label}<textarea rows="2" data-evidence="${id}" data-key="${key}" placeholder="写明数值、范围与依据">${esc(n.evidence?.[key] || '')}</textarea></label>`).join('')}</div><div class="notice info"><p>${a.handoff}</p></div><div class="answer-footer"><span class="small" id="save-status">${submitted(id) ? '证据已提交，可进入讲评。修改后需要重新提交。' : '草稿会自动保存；提交前请填写结论与三项证据。'}</span><button class="button primary" data-action="complete" data-id="${id}">${submitted(id) ? '✓ 已提交 · 撤回提交' : '提交本题证据'}</button></div></section>`;
   }
   function audit() {
     const data = state.data, t = aggregate(data.rows), calcs = state.notes.q1?.calcs || {};
