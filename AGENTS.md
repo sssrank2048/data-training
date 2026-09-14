@@ -4,6 +4,7 @@
 - 当前案例为 Kellogg Air France KEL319 / KEL321。镜像来源必须标明，不自动认证为官方文件。
 - 原始数据与派生明细放在 data/private，禁止提交、上传或打包到 dist。不能将其他案例拼接为同一企业投放。
 - 课程题目在 dist/assets/course.mjs 维护，使用 scripts/export-course.mjs 同步文档。
-- 统一在 analytics.mjs 计算，先求和再求比率。保留异常与原始标签；Kayak 独立。
+- 计算集中在 analytics.mjs 和 investigation.mjs 的纯函数中，先求和再求比率。保留异常与原始标签；Kayak 独立。
+- 保留独立初判、证据提交、跨题引用及数据指纹校验。修改前题后，后题需重新提交；不能覆盖或删除学员已有文字。
 - 情景假设与真实观测分开标注；收入减广告费不是利润，历史关联不是因果。
 - 修改核心计算后运行 npm test；修改静态资源后运行 npm run check。保持导入、浏览器本地保存和无数据状态可用。
