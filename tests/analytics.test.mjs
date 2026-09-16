@@ -2,8 +2,8 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import vm from 'node:vm';
-import {parseWorkbookSheets,aggregate,groupRows,scenario,filteredRows,csvText} from '../dist/assets/analytics.mjs';
-import {esc} from '../dist/assets/charts.mjs';
+import {parseWorkbookSheets,aggregate,groupRows,scenario,filteredRows,csvText} from '../dist/reference/air-france/assets/analytics.mjs';
+import {esc} from '../dist/reference/air-france/assets/charts.mjs';
 // Minimal arithmetic fixtures only. These are never used as course data.
 const columns=['Publisher Name','Campaign','Keyword','Clicks','Click Charges','Total Cost','Total Volume of Bookings','Amount'];
 const fixture=[columns,['A','C','one',10,99,20,2,200],['B','D','two',90,999,270,9,900]];

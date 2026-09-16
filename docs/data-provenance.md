@@ -1,59 +1,34 @@
-# Air France 数据来源与核验记录
+# Rocket Fuel 数据来源与核验
 
-检查日期：2026-09-14。
+主案例：Berkeley Haas **Rocket Fuel: Measuring the Effectiveness of Online Advertising**，B5894，Zsolt Katona / Brian Bell，2017。
 
-## 来源层级
+- [官方简介](https://store.hbr.org/product/rocket-fuel-measuring-the-effectiveness-of-online-advertising/B5894)：确认商业广告 vs PSA、Cookie 用户随机分配以及配套 rocketfuel_data.csv。
+- [作者课程大纲](https://faculty.haas.berkeley.edu/zskatona/ewmba206-f21.html)：Marketing Core / Fall 2021，列有 Rocket Fuel 小组案例分析。
+- [正文公开镜像](https://pdfcoffee.com/rocket-fuel-measuring-the-effectiveness-of-online-advertising-pdf-free.html)：核对原题 1–4 的主题、六个字段、活动期、4% 对照、CPM $9 与单位贡献约 $40。部分名称和数值为保密修改，不将其描述为未加工真实生产数据。不分发全文。
+- [采用的数据镜像固定版本](https://github.com/OguzhanCetinkaya/rocketfuel/blob/b2d2b779bd38dd7813623e25786d53fcb7012005/rocketfuel_data.csv)：公开教学分析仓库，不自动认证为官方文件。
 
-1. 案例身份：[Kellogg 官方页面](https://www.kellogg.northwestern.edu/academics-research/research/detail/2009/airfranceinternetmarketingoptimizinggoogleyahoomsnand/)，正文 KEL319。
-2. 正式数据附件入口：[Harvard Business Publishing，KEL321-XLS-ENG](https://hbsp.harvard.edu/product/KEL321-XLS-ENG)。本次未从发行方取得官方文件。
-3. 当前开发文件：[公开课程仓库中的 Excel 镜像](https://github.com/fairypp/Air_France_Internet_Marketing/blob/master/Air%20France%20Internet%20Marketing.xls)。它是现有文件，不是生成或编造的数据；但镜像的内容完整性尚未通过官方逐项对照验证。
+文件保存：`data/private/rocketfuel_data.csv`。
 
-文件大小 1,975,296 字节。SHA-256：
+字节数：12,024,311；SHA-256：`5e2325b50ed34283a38b011f12323609bbf6554236c17632c84cd3a6866097a2`；Git blob SHA-1：`07c1827ee0c10e498fc69c667b66bec711eca31e`。
 
-`c1e71191caacb17a4ee14815803a65d9f39bb27cfc07ed5f7f0c243e7ca78a0c`
+从该版本的 GitHub 归档提取唯一同名 CSV，并核对 blob 身份。不修改内容，不执行镜像仓库代码。头部 BOM 在解析字段名时处理；原 CSV 下载原样保留。
 
-指纹用于确认文件未发生变化，不能证明其官方来源或使用许可。原文件仅保留在被忽略的本地目录，不随网站发布。正式教学请取得相应材料使用权后核对、导入。题目和讲师参考是独立改编内容。
+## 使用前检查
 
-## 数据结构
+588,101 条用户记录、六列、无重复用户或缺失单元格。商业组 564,577 用户，PSA 23,524 用户。原始物理行号包含表头，明细导出加 source_row 供追溯。
 
-工作簿包含 Copyright、DoubleClick、Kayak 三张表。DoubleClick 有 4,510 条可计算记录、7 个 Publisher、24 个活动名称；按渠道和活动组合时为 45 组。保留源工作表和原行号。
+`npm run data:inspect` 从原文件重算，在忽略的 data/private 中保存审计、分组汇总、切片和推断。静态 dist 中不嵌入原始或派生明细。
 
-主要字段：Publisher Name、Campaign、Keyword、Keyword ID、Match Type、Bid Strategy、Status、Search Engine Bid、Clicks、Click Charges、Impressions、Amount、Total Cost、Total Volume of Bookings。原表已有的比率字段不用来直接求平均。
+## 拒用的初始镜像
 
-默认成本取 Total Cost，销售收入取 Amount，预订取 Total Volume of Bookings。金额按案例语境标注 USD，正式发行版本仍应核对。主表缺少日期字段，不能从工作簿创建/修改日期反推统计期间。
+[fahad-213/rocketfuel_data 固定版本](https://github.com/fahad-213/rocketfuel_data/blob/ffb716d8965e1847aed5826cffd8d47a8cb2ed6c/rocketfuel_data.csv) 虽可完整下载、符合 Git blob 身份，但实际 588,048 行，检查到 9 个重复用户。该版本保留在本机 `data/private/rocketfuel-fahad-mirror-audit.csv`，没有补行或自行去重，未作为课程默认数据。
 
-Kayak 表明确标注独立一周：6/04/07–6/10/07。它的点击 2,839、预订 208，独立展示，不并入主表。不能未经证实合并两份数据的总量或直接比较规模。
+其 SHA-256：`7021dc2645815808f618507d85781f01841b4890eff84fb8755c6dd608ecbbf2`。这说明镜像完整下载与数据适用性是两件不同的事；文件身份核验不能替代质量审计。
 
-## 已核对的主表汇总
+## 边界
 
-| 指标 | 结果 |
-| --- | ---: |
-| 广告花费（显示到美分） | $755,315.92 |
-| 点击 | 512,849 |
-| 预订 | 3,939 |
-| 销售收入 | $4,661,912.55 |
-| 曝光 | 41,868,674 |
-| 加权 CPC | $1.472784 |
-| 预订 / 点击 | 0.768062% |
-| CPA | $191.753217 |
-| ROAS | 6.172136 倍 |
+只有案例描述提供随机化依据，CSV 不包含完整随机化日志、跨设备关系、预处理画像或失访。频次与主要曝光星期/小时是投放后变量，不能据此认定策略因果效果。没有点击、金额、订单或退款字段。
 
-上述数值均从当前镜像求和/相除得到，不是教材官方标准答案。内部保留浮点精度，页面显示四舍五入。
+CPM 与单位贡献是案例参数，不是 CSV 实测列。调整后的参数是学员情景；未来实验的 MDE、分流比例和流量属于计划，不是已发生数据。
 
-## 异常与处理
-
-- 2 条记录预订数高于点击数，保留并提醒回溯。预订 / 点击是事件计数比，不等于独立用户购买概率。
-- 1 条零点击、4,142 条零预订，分母为零显示不可计算。零预订不自动判成无价值。
-- 当前检查未发现必需数值缺失、负值、缺少曝光或重复的“渠道 + 关键词键”。不代表所有字段完整或跨表口径已验证。
-- 跳过 1 行空白；不对异常记录删行或补造数值。
-- US、Global、Overture 保留原名，不未经核实合并。
-- 派生的“收入 − 广告费”未扣除机票履约等成本，不称为利润。
-- 第四题以 Kayak 独立汇总比较为核心；没有规定虚构预算或未来效率。
-
-复核可运行 `node scripts/inspect-data.mjs`。解析规则与网站共用模块，真实原文件亦纳入本地测试。
-
-## 下载与本轮题目校准
-
-运行 `npm run data:download` 可下载并验证同一完整镜像；已有文件若通过校验则不重复下载，若不同则保留并报错。网页首页提供直接原文件下载，无需先导入。部署版提供外部原文件链接，并可在浏览器读取镜像后验证大小与指纹。
-
-四题按实际案例主题调整为 KPI、渠道策略、活动/关键词、未来 SEM/Kayak；具体对照见 [案例与题目对照](case-alignment.md)。旧版的品牌分层、CPA 对称分解和压力测试不再是必做题。
+旧 Air France 来源记录保存在 `docs/reference-air-france/data-provenance.md`，独立使用。

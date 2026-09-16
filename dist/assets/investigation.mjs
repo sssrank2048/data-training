@@ -1,102 +1,63 @@
-// Derived analysis only: every measurement comes from imported case rows.
-import { aggregate, divide, groupRows, scenario } from './analytics.mjs';
-
-export const COURSE_REVISION = 3;
-export const DEFAULT_BRAND_TERMS = 'air france, airfrance';
-export const normalizeKeyword = value => String(value || '').normalize('NFKD').replace(/[\u0300-\u036f]/g, '').toLowerCase().replace(/[^\p{L}\p{N}]+/gu, ' ').trim().replace(/\s+/g, ' ');
-export function brandTerms(text = DEFAULT_BRAND_TERMS) {
-  return [...new Set(text.split(/[,，;；\n]/).map(normalizeKeyword).filter(Boolean))];
+import {ratio} from './analytics.mjs';
+export const COURSE_REVISION='rocket-fuel-causal-1';
+const Z=1.959963984540054;
+export function wilson(k,n){if(!Number.isInteger(k)||!Number.isInteger(n)||n<=0||k<0||k>n)return null;const p=k/n,d=1+Z*Z/n,c=(p+Z*Z/(2*n))/d,h=Z*Math.sqrt(p*(1-p)/n+Z*Z/(4*n*n))/d;return [Math.max(0,c-h),Math.min(1,c+h)];}
+export function effect(summary){
+ if(!summary?.usable)return null;
+ const [c,t]=summary.arms,pc=c.conversions/c.users,pt=t.conversions/t.users,ciC=wilson(c.conversions,c.users),ciT=wilson(t.conversions,t.users),delta=pt-pc;
+ const ci=[delta-Math.hypot(pt-ciT[0],ciC[1]-pc),delta+Math.hypot(ciT[1]-pt,pc-ciC[0])];
+ return {pc,pt,delta,ci,ciC,ciT,lift:ratio(delta,pc),baseline:t.users*pc,incremental:t.users*delta,incrementalCI:ci.map(x=>x*t.users)};
 }
-export function classifyKeyword(keyword, termsText = DEFAULT_BRAND_TERMS) {
-  const value = normalizeKeyword(keyword);
-  if (!value) return '缺少关键词';
-  const matched = brandTerms(termsText).some(term => (` ${value} `).includes(` ${term} `));
-  return matched ? '品牌命中' : '非品牌候选';
+export function economics(summary,{cpm=9,margin=40,scope='pilot'}={}){
+ const e=effect(summary);if(!e||!Number.isFinite(cpm)||!Number.isFinite(margin)||cpm<0||margin<0)return null;
+ const impressions=scope==='treatment'?summary.arms[1].impressions:summary.all.impressions,cost=impressions*cpm/1000,contribution=e.incremental*margin,net=contribution-cost;
+ return {...e,cpm,margin,scope,impressions,cost,contribution,net,roi:ratio(net,cost),naive:summary.arms[1].conversions*margin,netCI:e.incrementalCI.map(x=>x*margin-cost),roiCI:cost?e.incrementalCI.map(x=>(x*margin-cost)/cost):null,incrementalCPA:e.incremental>0?cost/e.incremental:null,breakEvenCPM:ratio(contribution*1000,impressions),breakEvenMargin:e.incremental>0?cost/e.incremental:null};
 }
-export function classifiedRows(rows, terms) {
-  return rows.map(row => ({ ...row, brand: classifyKeyword(row.keyword, terms) }));
+// Restricted expression grammar; no evaluation of JavaScript or arbitrary property access.
+export function metricValue(formula,summary,population='all'){
+ if(typeof formula!=='string'||formula.length>500)throw Error('公式长度需在 1–500 字符内');
+ const arms=summary?.arms;let base=population==='treatment'?arms?.[1]:population==='control'?arms?.[0]:summary?.all;
+ const refs=new Set();let pos=0,count=0;
+ const ws=()=>{while(/\s/.test(formula[pos]||'')&&pos<formula.length)pos++;};
+ function primary(){ws();if(++count>100)throw Error('公式过于复杂');const c=formula[pos];if(c==='+'||c==='-'){pos++;return (c==='-'?-1:1)*primary();}if(c==='('){pos++;const v=expr();ws();if(formula[pos++]!==')')throw Error('括号不匹配');return v;}
+  const scope=formula.slice(pos).match(/^(T|C)\s*\(/);if(scope){pos+=scope[0].length;refs.add('test');const previous=base;base=arms?.[scope[1]==='T'?1:0];const v=expr();base=previous;ws();if(formula[pos++]!==')')throw Error('分组括号不匹配');return v;}
+  const num=formula.slice(pos).match(/^(?:\d+(?:\.\d*)?|\.\d+)/);if(num){pos+=num[0].length;return Number(num[0]);}
+  const call=formula.slice(pos).match(/^(COUNT|SUM|MEAN)\s*\(\s*([a-z_]+)\s*\)/);if(!call)throw Error('仅支持 COUNT / SUM / MEAN、T / C 分组、四则运算与括号');
+  pos+=call[0].length;const [,fn,f]=call;refs.add(f);
+  if(!(['user_id','converted','tot_impr'].includes(f)))throw Error(`字段 ${f} 不可计算；本案例没有点击、收入或逐笔成本字段`);
+  if(f==='user_id'&&fn!=='COUNT')throw Error('user_id 是标识符，只能计数');
+  if(!summary?.usable||!base)return NaN;
+  const sum=f==='converted'?base.conversions:base.impressions;
+  return fn==='COUNT'?base.users:fn==='SUM'?sum:sum/base.users;
+ }
+ function term(){let v=primary();ws();while(formula[pos]==='*'||formula[pos]==='/'){const op=formula[pos++],r=primary();v=op==='*'?v*r:r===0?NaN:v/r;ws();}return v;}
+ function expr(){let v=term();ws();while(formula[pos]==='+'||formula[pos]==='-'){const op=formula[pos++],r=term();v=op==='+'?v+r:v-r;ws();}return v;}
+ if(!formula.trim())throw Error('请输入公式');const value=expr();ws();if(pos!==formula.length)throw Error('公式中含有不支持的字符或字段');return {value:Number.isFinite(value)?value:null,fields:[...refs]};
 }
-export function mixComparison(rows, a, b, terms = DEFAULT_BRAND_TERMS) {
-  const tagged = classifiedRows(rows, terms);
-  const channels = [a, b].map(name => {
-    const items = tagged.filter(row => row.publisher === name);
-    return { name, raw: aggregate(items), strata: Object.fromEntries(groupRows(items, 'brand').map(g => [g.name, g])) };
-  });
-  const common = ['品牌命中', '非品牌候选'].filter(k => channels.every(c => c.strata[k]?.clicks > 0));
-  const commonClicks = common.reduce((sum, k) => sum + channels.reduce((s, c) => s + c.strata[k].clicks, 0), 0);
-  const weights = Object.fromEntries(common.map(k => [k, channels.reduce((s, c) => s + c.strata[k].clicks, 0) / commonClicks]));
-  return {
-    common, weights, valid: a !== b && common.length > 0 && brandTerms(terms).length > 0,
-    channels: channels.map(c => {
-      const commonRowsClicks = common.reduce((s, k) => s + c.strata[k].clicks, 0);
-      const cvr = common.length ? common.reduce((s, k) => s + weights[k] * c.strata[k].cvr, 0) : null;
-      const cpc = common.length ? common.reduce((s, k) => s + weights[k] * c.strata[k].cpc, 0) : null;
-      const revenuePerClick = common.length ? common.reduce((s, k) => s + weights[k] * divide(c.strata[k].revenue, c.strata[k].clicks), 0) : null;
-      return { ...c, coverage: divide(commonRowsClicks, c.raw.clicks), adjusted: { cvr, cpc, roas: divide(revenuePerClick, cpc) } };
-    })
-  };
+export function samplePlan({baseline,mdePP,controlShare=.5,dailyUsers=null}){
+ const p0=Number(baseline),diff=Number(mdePP)/100,q=Number(controlShare),p1=p0+diff;
+ if(!(p0>0&&p0<1&&diff>0&&p1<1&&q>=.01&&q<=.99))return null;
+ // Large-sample two-sided test, alpha .05, power .80; ratio n_control / n_treatment.
+ const r=q/(1-q),pooled=(p1+r*p0)/(1+r),nullSD=Math.sqrt(pooled*(1-pooled)*(1+1/r)),altSD=Math.sqrt(p1*(1-p1)+p0*(1-p0)/r);
+ const treatment=Math.ceil(((Z*nullSD+.8416212335729143*altSD)/diff)**2),control=Math.ceil(treatment*r),total=treatment+control;
+ return {treatment,control,total,p0,p1,diff,controlShare:q,days:Number(dailyUsers)>0?Math.ceil(total/Number(dailyUsers)):null};
 }
-
-// Symmetric two-factor decomposition. Contributions sum exactly to CPA_A - CPA_B.
-export function decomposeCPA(a, b) {
-  if (![a.cpc, b.cpc, a.cvr, b.cvr].every(v => Number.isFinite(v) && v > 0)) return null;
-  const costContribution = (a.cpc - b.cpc) * (1 / a.cvr + 1 / b.cvr) / 2;
-  const conversionContribution = (1 / a.cvr - 1 / b.cvr) * (a.cpc + b.cpc) / 2;
-  return { from: b.cpa, to: a.cpa, delta: a.cpa - b.cpa, costContribution, conversionContribution };
+export function allocationCheck(summary,expected=.04){if(!summary?.all.users||!(expected>0&&expected<1))return null;const n=summary.all.users,k=summary.arms[0].users,z=(k-n*expected)/Math.sqrt(n*expected*(1-expected));return {observed:k/n,expected,z,flag:Math.abs(z)>3.2905267314919255};}
+// Signatures bind work to data, definitions, previous drafts and saved scenario/plan.
+export function signature(value){let h=2166136261;const s=JSON.stringify(value);for(let i=0;i<s.length;i++)h=Math.imul(h^s.charCodeAt(i),16777619);return (h>>>0).toString(16);}
+export function questionSignature(group,id,dataHash){const index=Number(id.slice(1));return signature({revision:COURSE_REVISION,dataHash,metrics:group.metrics,notes:Object.fromEntries(Array.from({length:index},(_,i)=>{const key='q'+(i+1);return [key,group.notes[key]||{}];})),scenario:index>=3?group.scenario:null,plan:index>=4?group.plan:null});}
+export function submissionState(group,id,hash){const list=group.submissions[id]||[],last=list.at(-1);return !last?'draft':last.signature===questionSignature(group,id,hash)?'current':'stale';}
+export function submitQuestion(group,id,hash,at=new Date().toISOString()){
+ const n=Number(id.slice(1));if(!hash)throw Error('请先载入并核验数据');
+ if(!group.notes[id]?.initial?.trim()||!group.notes[id]?.evidence?.trim()||!group.notes[id]?.answer?.trim())throw Error('请填写独立初判、证据和结论');
+ if(n===1&&!group.metrics.length)throw Error('请先创建本组指标');
+ for(let i=1;i<n;i++)if(submissionState(group,'q'+i,hash)!=='current')throw Error('请先重新提交前题证据，再引用到本题');
+ const snapshot={at,dataHash:hash,signature:questionSignature(group,id,hash),notes:structuredClone(group.notes[id]),references:Object.fromEntries(Array.from({length:n-1},(_,i)=>['q'+(i+1),group.submissions['q'+(i+1)].at(-1).signature])),metrics:structuredClone(group.metrics),scenario:structuredClone(group.scenario),plan:structuredClone(group.plan)};
+ return {...group,submissions:{...group.submissions,[id]:[...(group.submissions[id]||[]),snapshot]}};
 }
-
-const recordKey = r => JSON.stringify([r.sourceSheet, r.sourceRow]);
-export function candidateRows(rows, threshold) {
-  return rows.filter(r => r.clicks >= threshold && r.bookings === 0).sort((a, b) => b.cost - a.cost || a.sourceRow - b.sourceRow);
-}
-export function thresholdSensitivity(rows, reference = 50) {
-  const baseline = candidateRows(rows, reference).slice(0, 10);
-  const keys = new Set(baseline.map(recordKey));
-  const total = aggregate(rows);
-  return [...new Set([10, 50, 100, 200, reference])].sort((a, b) => a - b).map(threshold => {
-    const candidates = candidateRows(rows, threshold), totals = aggregate(candidates);
-    const top = candidates.slice(0, 10);
-    return { threshold, count: candidates.length, cost: totals.cost, share: divide(totals.cost, total.cost), overlap: top.filter(r => keys.has(recordKey(r))).length, referenceCount: baseline.length };
-  });
-}
-
-// Allocate whole cents with largest remainders, so each benchmark uses the same budget.
-export function allocateBudget(groups, cap, field = 'cost') {
-  if (!Number.isFinite(cap) || cap < 0 || cap > 1e12) throw Error('预算需在 0 到 1 万亿美元之间。');
-  const cents = Math.round(cap * 100), weights = groups.map(g => Math.max(0, g[field] || 0));
-  const sum = weights.reduce((s, v) => s + v, 0);
-  if (!sum) return null;
-  const raw = weights.map(w => cents * w / sum), result = raw.map(Math.floor);
-  const remainder = cents - result.reduce((s, n) => s + n, 0);
-  const order = raw.map((v, i) => ({ i, fraction: v - result[i] })).sort((a, b) => b.fraction - a.fraction || a.i - b.i);
-  for (let i = 0; i < remainder; i++) result[order[i % order.length].i]++;
-  return Object.fromEntries(groups.map((g, i) => [g.name, result[i] / 100]));
-}
-
-export function stressPlan(groups, budgets, baseBudgets, { cpcChange = 0, cvrChange = 0, expansionDrop = 0, cap = null } = {}) {
-  if (!Number.isFinite(expansionDrop) || expansionDrop < 0 || expansionDrop > 100) throw Error('新增分配部分的预订率折损需在 0% 到 100% 之间。');
-  const normal = scenario(groups, budgets, { cpcChange, cvrChange, cap });
-  const original = scenario(groups, budgets, { cap });
-  let expansionRevenue = 0;
-  const adjustedRows = normal.rows.map((r, i) => {
-    const expandedBudget = Math.max(0, r.budget - baseBudgets[groups[i].name]);
-    const fraction = r.budget > 0 ? expandedBudget / r.budget : 0;
-    if (r.revenue !== null) expansionRevenue += r.revenue * fraction;
-    const multiplier = 1 - fraction * expansionDrop / 100;
-    return { ...r, expandedBudget, revenue: r.revenue === null ? null : r.revenue * multiplier, bookings: r.bookings === null ? null : r.bookings * multiplier };
-  });
-  const revenue = normal.valid ? adjustedRows.reduce((s, r) => s + r.revenue, 0) : null;
-  return { ...normal, rows: adjustedRows, baseRevenue: original.revenue, expansionRevenue, revenue, bookings: normal.valid ? adjustedRows.reduce((s, r) => s + r.bookings, 0) : null, balance: revenue === null ? null : revenue - normal.budget };
-}
-export function comparePlans(groups, custom, options) {
-  const historical = allocateBudget(groups, options.cap), weighted = allocateBudget(groups, options.cap, 'roas');
-  if (!historical) throw Error('当前文件没有可用于历史占比分配的花费。');
-  const defs = [{ id: 'historical', name: '历史占比分配', budgets: historical }, { id: 'roas', name: '按历史 ROAS 权重分配', budgets: weighted }, { id: 'custom', name: '我的方案', budgets: custom }];
-  return defs.map(plan => ({ ...plan, result: plan.budgets ? stressPlan(groups, plan.budgets, historical, options) : null }));
-}
-export function budgetSignature(dataHash, budgets, options) {
-  return JSON.stringify({ dataHash, budgets: Object.entries(budgets).sort(([a], [b]) => a.localeCompare(b)), ...options });
-}
-export function isSubmitted(note, hash) {
-  return !!(hash && note?.complete && note.courseRevision === COURSE_REVISION && note.datasetHash === hash);
+export function newGroup(id,name){return {id,name,metrics:[],metricHistory:[],notes:{},submissions:{},scenario:{cpm:9,margin:40,scope:'pilot'},plan:{hypothesis:'',unit:'Cookie 用户（跨设备识别需另行验证）',primary:'转化用户数 / 随机入组用户数',window:'',guardrail:'',decision:'',mdePP:'',controlShare:'0.5',dailyUsers:''}};}
+export function validateImport(value){
+ if(value?.schema!=='rocket-fuel-course-v1'||!Array.isArray(value.groups)||!value.groups.length||value.groups.length>50)throw Error('不是本课程的小组导出文件');
+ for(const g of value.groups){if(typeof g.name!=='string'||!Array.isArray(g.metrics)||g.metrics.length>100||!g.notes||!g.submissions||!g.plan||!g.scenario)throw Error('小组文件结构不完整');for(const m of g.metrics){if(['name','formula','unit','role','population','window','meaning'].some(k=>typeof m[k]!=='string'))throw Error('指标定义不完整');metricValue(m.formula,null);}for(const n of Object.values(g.notes)){if(['initial','evidence','answer'].some(k=>typeof n[k]!=='string'&&n[k]!==undefined))throw Error('练习文字格式错误');}}
+ return value.groups;
 }

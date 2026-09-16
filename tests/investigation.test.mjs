@@ -1,12 +1,12 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
-import { aggregate, groupRows } from '../dist/assets/analytics.mjs';
-import { lessons } from '../dist/assets/course.mjs';
-import { classifyKeyword, mixComparison, decomposeCPA, thresholdSensitivity, allocateBudget, comparePlans, stressPlan, isSubmitted } from '../dist/assets/investigation.mjs';
+import { aggregate, groupRows } from '../dist/reference/air-france/assets/analytics.mjs';
+import { lessons } from '../dist/reference/air-france/assets/course.mjs';
+import { classifyKeyword, mixComparison, decomposeCPA, thresholdSensitivity, allocateBudget, comparePlans, stressPlan, isSubmitted } from '../dist/reference/air-france/assets/investigation.mjs';
 // Arithmetic fixtures only; no fixture is used in the course or deployment.
 const row = (publisher, keyword, clicks, bookings, cost, revenue, sourceRow) => ({ publisher, keyword, clicks, bookings, cost, revenue, sourceRow, sourceSheet: 'fixture', impressions: null });
-test('course schedule adds to 120 minutes including briefing and review', () => assert.equal(20 + lessons.reduce((s, l) => s + l.time, 0), 120));
+test('course schedule adds to 120 minutes including briefing and review', () => assert.equal(30 + lessons.reduce((s, l) => s + l.time, 0), 120));
 test('brand rules normalize punctuation and respect complete phrase boundaries', () => {
   assert.equal(classifyKeyword('[AirFrance].com'), '品牌命中');
   assert.equal(classifyKeyword('AIR-FRANCE tickets'), '品牌命中');

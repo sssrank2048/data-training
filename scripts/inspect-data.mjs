@@ -1,12 +1,12 @@
 import fs from 'node:fs';
 import vm from 'node:vm';
 import crypto from 'node:crypto';
-import {parseWorkbookSheets,aggregate,groupRows} from '../dist/assets/analytics.mjs';
+import {parseWorkbookSheets,aggregate,groupRows} from '../dist/reference/air-france/assets/analytics.mjs';
 const file=process.argv[2]||'data/private/air-france-mirror.xls';
 const bytes=fs.readFileSync(file),context={};
 vm.runInNewContext(fs.readFileSync('dist/vendor/xlsx.full.min.js','utf8'),context);
 const wb=context.XLSX.read(bytes,{type:'buffer'});
-const sheets=wb.SheetNames.map(name=>({name,startRow:wb.Sheets[name]['!ref']?context.XLSX.utils.decode_range(wb.Sheets[name]['!ref']).s.r:0,matrix:context.XLSX.utils.sheet_to_json(wb.Sheets[name],{header:1,defval:null})}));
+const sheets=wb.SheetNames.map(name=>({name,startRow:wb.Sheets[name]['!ref']?context.XLSX.utils.decode_range(wb.Sheets[name]['!ref']).s.r:0,startCol:wb.Sheets[name]['!ref']?context.XLSX.utils.decode_range(wb.Sheets[name]['!ref']).s.c:0,matrix:context.XLSX.utils.sheet_to_json(wb.Sheets[name],{header:1,defval:null})}));
 const data=parseWorkbookSheets(sheets,{filename:file.split('/').pop(),sha256:crypto.createHash('sha256').update(bytes).digest('hex'),sourceKind:process.argv[2]?'local-import':'public-course-mirror',sourceUrl:process.argv[2]?null:'https://github.com/fairypp/Air_France_Internet_Marketing/blob/master/Air%20France%20Internet%20Marketing.xls',authority:process.argv[2]?'用户指定本地文件；真实性未自动认证':'公开课程镜像；尚未与官方发行文件逐字节核对',retrievedAt:new Date().toISOString()});
 fs.writeFileSync('data/private/inspected-data.json',JSON.stringify(data));
 const report={rows:data.rows.length,totals:aggregate(data.rows),publishers:groupRows(data.rows,'publisher'),campaigns:groupRows(data.rows,'campaign').length,audit:data.audit,kayak:data.kayak,metadata:data.meta};

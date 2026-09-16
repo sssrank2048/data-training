@@ -55,7 +55,7 @@ export function investigationController(state, { render, save, toast, download }
     const references = Object.fromEntries(prior.map(l => [l.id, { submittedAt: state.notes[l.id].submittedAt, evidence: structuredClone(state.notes[l.id].evidence), conclusion: state.notes[l.id].text }]));
     const context = id === 'q3' ? { publisher: state.publisher, campaign: state.campaign, query: state.query, minClicks: state.minClicks } : undefined;
     state.notes[id] = { ...note, complete: true, courseRevision: COURSE_REVISION, datasetHash: hash(), submittedAt: new Date().toISOString(), references, ...(context ? { analysisContext: context } : {}) };
-    save(); render(); toast('证据已提交，可以进入讲评。经营判断仍需讲师评阅。');
+    save(); render(); toast('练习证据已提交。经营判断仍需讲师评阅，参考答案始终可查看。');
   }
   async function click(action, button) {
     if (action === 'save-initial') {

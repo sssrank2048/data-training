@@ -1,41 +1,28 @@
 <!doctype html>
 <html lang="zh-CN">
 <head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Air France · 广告经营分析实战</title>
-  <meta name="description" content="基于 Kellogg Air France 教学案例的两小时广告经营分析实战：经营诊断、渠道配置、关键词优化与决策复盘。">
-  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='6' fill='%23152037'/%3E%3Cpath d='M7 24L16 6h6l-9 18z' fill='white'/%3E%3Cpath d='M18 24l7-14v14z' fill='%23ef4056'/%3E%3C/svg%3E">
-  <link rel="stylesheet" href="/assets/style.css">
-  <link rel="stylesheet" href="/assets/chart-fixes.css">
-  <link rel="stylesheet" href="/assets/investigation.css">
-  <link rel="stylesheet" href="/assets/case.css">
-  <script type="module" src="/assets/workbench.mjs"></script>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="description" content="基于 Berkeley Haas Rocket Fuel 教学案例的 120 分钟广告增量实验课程。指标共创、因果验证、经营决策、实验设计。">
+<title>广告增量实验室 · Rocket Fuel</title>
+<link rel="icon" href="/assets/icon.svg" type="image/svg+xml">
+<link rel="stylesheet" href="/assets/style.css">
+<script type="module" src="/assets/app.mjs"></script>
 </head>
 <body>
-  <a class="skip" href="#main">跳到课程正文</a>
-  <aside class="sidebar">
-    <a class="brand" href="#overview"><span class="brand-mark">A<span>/</span></span><span>AD LAB<small>广告经营分析实战</small></span></a>
-    <div class="side-label">课程工作台</div>
-    <nav aria-label="课程导航" id="navigation">
-      <a href="#overview" data-route="overview"><span>▦</span>数据与课程总览</a>
-      <a href="#brief" data-route="brief"><span>▤</span>案例故事与题目依据</a>
-      <div class="side-label">四个决策 · 一条主线</div>
-      <a href="#q1" data-route="q1"><span class="nav-num">01</span>定义投放成功的指标</a>
-      <a href="#q2" data-route="q2"><span class="nav-num">02</span>制定各渠道投放策略</a>
-      <a href="#q3" data-route="q3"><span class="nav-num">03</span>优化活动与关键词</a>
-      <a href="#q4" data-route="q4"><span class="nav-num">04</span>评估 Kayak 与未来 SEM</a>
-      <div class="side-label">学习资源</div>
-      <a href="#data" data-route="data"><span>▥</span>数据与口径</a>
-      <a href="#notes" data-route="notes"><span>▧</span>我的分析记录</a>
-    </nav>
-    <div class="sidebar-bottom"><span class="edition">CASE STUDY / 01</span><strong>Air France</strong><p>从一次搜索广告投放，<br>练习完整的经营决策。</p><span class="small">Kellogg 案例教学改编</span></div>
-  </aside>
-  <div class="workspace">
-    <header class="topbar"><span>实战课程 <span class="slash">/</span> <strong id="breadcrumb">数据与课程总览</strong></span><div class="top-actions"><span class="pill" id="data-status">数据待导入</span><a class="button compact" href="#data">数据与下载 <span>↗</span></a></div></header>
-    <main id="main" tabindex="-1"></main>
-    <footer>基于 Kellogg Air France 案例独立改编 · 非学校或航空公司官方网站<span>案例数据与分析假设分别标注</span></footer>
-  </div>
-  <div id="toast" role="status" aria-live="polite"></div>
-</body>
-</html>
+<a class="skip" href="#main">跳到课程内容</a>
+<aside class="sidebar">
+<a class="brand" href="#story"><span class="brand-symbol">↗</span><span>广告增量实验室<small>THE INCREMENTALITY LAB</small></span></a>
+<div class="course-tag">ROCKET FUEL · B5894</div>
+<nav aria-label="课程章节" id="navigation"></nav>
+<div class="sidebar-bottom"><span class="pill">120 分钟 · 分组实战</span><p>用一场广告实验，<br>走完从目标到决策的分析过程。</p><a href="/reference/air-france/">Air France 旧版参考 ↗</a></div>
+</aside>
+<div class="workspace">
+<header class="topbar"><span id="breadcrumb">案例故事</span><div class="top-actions"><a id="data-status" href="#data">正在读取本机数据…</a><a class="group-link" href="#groups" id="group-label">小组工作区 ↗</a></div></header>
+<main id="main" tabindex="-1"><p>正在打开课程…</p></main>
+<footer>BERKELEY HAAS CASE · 本课程教学改编 <a href="#sources">来源、方法与使用边界 ↗</a></footer>
+</div>
+<div id="export-result" role="status" hidden></div>
+<div id="toast" role="status" aria-live="polite"></div>
+<input type="file" id="csv-file" accept=".csv,text/csv" hidden><input type="file" id="group-file" accept=".json,application/json" hidden>
+<noscript>本课程交互需要 JavaScript。可阅读 <a href="/downloads/course-guide.md">完整问题与参考答案讲义</a>。</noscript>
+</body></html>

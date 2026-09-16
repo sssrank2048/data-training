@@ -1,36 +1,57 @@
-export const SCHEMA_VERSION=1;
-const key=s=>String(s??'').trim().toLowerCase().replace(/[\s_.-]+/g,'');
-const aliases={publisher:['Publisher Name','Publisher','Search Engine'],campaign:['Campaign','Campaign Name'],keyword:['Keyword'],keywordId:['Keyword ID'],matchType:['Match Type'],bidStrategy:['Bid Strategy'],status:['Status'],clicks:['Clicks'],cost:['Total Cost','Click Charges','Media Cost','Cost'],bookings:['Total Volume of Bookings','Total Bookings','Bookings'],revenue:['Amount','Total Revenue','Revenue'],impressions:['Impressions'],bid:['Search Engine Bid']};
-const essential=['publisher','clicks','cost','bookings','revenue'];
-const numeric=['clicks','cost','bookings','revenue','impressions','bid'];
-export function divide(a,b){return b>0&&Number.isFinite(a)&&Number.isFinite(b)?a/b:null}
-export function parseNumeric(value){if(value===null||value===undefined||String(value).trim()==='')return null;if(typeof value==='number')return Number.isFinite(value)?value:null;const v=String(value).trim().replace(/[$,\s]/g,'');if(!/^[+-]?(?:\d+(?:\.\d*)?|\.\d+)$/.test(v))return null;const n=Number(v);return Number.isFinite(n)?n:null}
-export function detectHeader(matrix){let best=null;for(let i=0;i<Math.min(40,matrix.length);i++){const normalized=matrix[i].map(key);const columns={};for(const [field,names] of Object.entries(aliases)){for(const name of names){const c=normalized.indexOf(key(name));if(c>=0){columns[field]=c;break}}}const score=essential.filter(x=>x in columns).length;if(score===essential.length){best={index:i,columns};break}}return best}
-export function parseWorkbookSheets(sheets,meta={}){
- const candidates=[];
- for(const sheet of sheets){const header=detectHeader(sheet.matrix);if(header)candidates.push({...sheet,header})}
- if(!candidates.length)throw Error('未找到数据表头。需要 Publisher Name、Clicks、Total Cost（或 Click Charges）、Total Volume of Bookings、Amount（或 Total Revenue）。');
- const primary=candidates.find(s=>/doubleclick/i.test(s.name))||candidates.find(s=>!/kayak/i.test(s.name));
- if(!primary)throw Error('只发现 Kayak 汇总表，请导入包含 DoubleClick 明细的完整工作簿。');
- const audit={blankRows:0,summaryRows:0,errors:[],bookingsAboveClicks:0,zeroClicks:0,zeroBookings:0,duplicateKeywordKeys:0,missingImpressions:0,nonIntegerCounts:0};
- const seen=new Set();
- function parseCandidate(sheet,isPrimary){const result=[];for(let i=sheet.header.index+1;i<sheet.matrix.length;i++){const cells=sheet.matrix[i];if(cells.every(v=>v===null||v===undefined||String(v).trim()==='')){if(isPrimary)audit.blankRows++;continue}const pub=String(cells[sheet.header.columns.publisher]??'').trim();if(/^(grand\s*total|total|subtotal|合计|总计)$/i.test(pub)){if(isPrimary)audit.summaryRows++;continue}if(!pub){if(isPrimary)audit.errors.push(`第 ${i+1} 行：渠道为空，不能确定是否为明细`);continue}if(!isPrimary&&pub!=='Kayak')continue;
- const row={sourceSheet:sheet.name,sourceRow:i+1+(sheet.startRow||0)};
- for(const [field,col] of Object.entries(sheet.header.columns)){row[field]=numeric.includes(field)?parseNumeric(cells[col]):String(cells[col]??'').trim()}
- const bad=['clicks','cost','bookings','revenue'].filter(f=>row[f]===null||row[f]<0);
- if(bad.length){if(isPrimary)audit.errors.push(`第 ${row.sourceRow} 行：${bad.join(' / ')} 缺失、非数值或为负`);continue}
- if(row.impressions!==undefined&&row.impressions!==null&&row.impressions<0){if(isPrimary)audit.errors.push(`第 ${row.sourceRow} 行：曝光为负`);continue}
- row.impressions=row.impressions??null;row.campaign=row.campaign||'未提供';row.keyword=row.keyword||'';row.keywordId=row.keywordId||'';row.matchType=row.matchType||'未提供';row.bidStrategy=row.bidStrategy||'未提供';row.status=row.status||'未提供';
- if(isPrimary){if(row.bookings>row.clicks)audit.bookingsAboveClicks++;if(row.clicks===0)audit.zeroClicks++;if(row.bookings===0)audit.zeroBookings++;if(row.impressions===null)audit.missingImpressions++;if(!Number.isInteger(row.clicks)||!Number.isInteger(row.bookings)||(row.impressions!==null&&!Number.isInteger(row.impressions)))audit.nonIntegerCounts++;const id=JSON.stringify([row.publisher,row.keywordId||row.keyword]);if(seen.has(id))audit.duplicateKeywordKeys++;seen.add(id)}result.push(row)}return result}
- const rows=parseCandidate(primary,true);
- if(audit.errors.length)throw Error(`导入未完成：发现 ${audit.errors.length} 条不能计算的记录。${audit.errors.slice(0,4).join('；')}。请先核对原表，空值不会自动补为零。`);
- if(!rows.length)throw Error('工作表没有可计算的明细记录。');
- const ks=candidates.find(s=>s!==primary&&/kayak/i.test(s.name));const kayak=ks?parseCandidate(ks,false)[0]||null:null;
- const periodNotes=ks?ks.matrix.flat().filter(v=>typeof v==='string'&&/time period|one week/i.test(v)):[];
- return {version:SCHEMA_VERSION,rows,kayak,audit,meta:{...meta,primarySheet:primary.name,headers:primary.matrix[primary.header.index].filter(x=>x!==null&&x!==''&&x!==undefined),mappedColumns:Object.fromEntries(Object.entries(primary.header.columns).map(([k,v])=>[k,primary.matrix[primary.header.index][v]])),sheets:sheets.map(s=>s.name),period:'DoubleClick 主表未提供日期字段；不得构造日趋势。',kayakPeriod:periodNotes.join(' ')||'期间未确认',currency:'USD（依据案例语境，正式版本导入后需核对）'}};
+// CSV cells and physical source lines are retained separately from numeric analysis.
+export const FIELDS=['user_id','test','converted','tot_impr','mode_impr_day','mode_impr_hour'];
+export const FREQUENCY_BINS=[[1,5,'1–5'],[6,10,'6–10'],[11,20,'11–20'],[21,40,'21–40'],[41,80,'41–80'],[81,160,'81–160'],[161,Infinity,'161+']];
+export function parseCSV(text){
+ const rows=[];let cells=[],value='',quoted=false,line=1,start=1;
+ for(let i=0;i<text.length;i++){
+  const c=text[i];
+  if(c==='"'){if(quoted&&text[i+1]==='"'){value+='"';i++;}else if(quoted||value==='')quoted=!quoted;else throw Error(`第 ${line} 行引号位置异常`);}
+  else if(c===','&&!quoted){cells.push(value);value='';}
+  else if((c==='\n'||c==='\r')&&!quoted){cells.push(value);rows.push({line:start,cells});cells=[];value='';if(c==='\r'&&text[i+1]==='\n')i++;line++;start=line;}
+  else{value+=c;if(c==='\n')line++;}
+ }
+ if(quoted)throw Error('CSV 引号未闭合');
+ if(value!==''||cells.length){cells.push(value);rows.push({line:start,cells});}
+ if(!rows.length)throw Error('CSV 没有内容');
+ const headers=rows.shift().cells.map((x,i)=>i===0?x.replace(/^\uFEFF/,''):x);
+ if(headers.length!==FIELDS.length||FIELDS.some((f,i)=>f!==headers[i]))throw Error('需要原案例的六列 CSV：'+FIELDS.join(', '));
+ return {headers,rows};
 }
-export function aggregate(rows){const t={count:rows.length,clicks:0,cost:0,bookings:0,revenue:0,impressions:0,impressionRows:0};for(const r of rows){for(const k of ['clicks','cost','bookings','revenue'])t[k]+=r[k];if(r.impressions!==null&&r.impressions!==undefined){t.impressions+=r.impressions;t.impressionRows++}}const complete=t.impressionRows===rows.length&&rows.length>0;return {...t,impressions:complete?t.impressions:null,cpc:divide(t.cost,t.clicks),cvr:divide(t.bookings,t.clicks),ctr:complete?divide(t.clicks,t.impressions):null,cpa:divide(t.cost,t.bookings),roas:divide(t.revenue,t.cost),revenuePerBooking:divide(t.revenue,t.bookings),balance:t.revenue-t.cost}}
-export function groupRows(rows,field){const groups=new Map();for(const r of rows){const name=r[field]||'未提供';if(!groups.has(name))groups.set(name,[]);groups.get(name).push(r)}return [...groups].map(([name,items])=>({name,...aggregate(items)})).sort((a,b)=>b.cost-a.cost)}
-export function filteredRows(rows,{publisher='',campaign='',query='',minClicks=0}={}){return rows.filter(r=>(!publisher||r.publisher===publisher)&&(!campaign||r.campaign===campaign)&&(!query||r.keyword.toLowerCase().includes(query.toLowerCase()))&&r.clicks>=minClicks)}
-export function scenario(groups,budgets,{cpcChange=0,cvrChange=0,cap=null}={}){if(!Number.isFinite(cpcChange)||!Number.isFinite(cvrChange)||cpcChange<=-100||cvrChange< -100)throw Error('CPC 变化必须大于 -100%，CVR 变化不得低于 -100%。');if(cap!==null&&(!Number.isFinite(cap)||cap<0))throw Error('预算上限必须为非负数。');let total=0;const rows=groups.map(g=>{const budget=budgets[g.name];if(!Number.isFinite(budget)||budget<0)throw Error('每个渠道预算都必须为非负数。');total+=budget;const cpc=g.cpc===null?null:g.cpc*(1+cpcChange/100);const cvr=g.cvr===null?null:g.cvr*(1+cvrChange/100);const valid=cpc>0&&cvr!==null&&g.revenuePerBooking!==null;if(budget===0)return {name:g.name,budget,clicks:0,bookings:0,revenue:0,balance:0,valid:true};if(!valid)return{name:g.name,budget,clicks:null,bookings:null,revenue:null,balance:null,valid:false};const clicks=budget/cpc;const bookings=clicks*cvr;const revenue=bookings*g.revenuePerBooking;return{name:g.name,budget,clicks,bookings,revenue,balance:revenue-budget,valid:true}});const valid=rows.every(r=>r.valid);return{rows,budget:total,overCap:cap!==null&&total>cap+0.005,valid,revenue:valid?rows.reduce((s,r)=>s+r.revenue,0):null,bookings:valid?rows.reduce((s,r)=>s+r.bookings,0):null,balance:valid?rows.reduce((s,r)=>s+r.balance,0):null}}
-export function csvText(headers,rows){const escape=v=>{let s=String(v??'');if(/^[=+@\-\t\r]/.test(s)&&typeof v!=='number')s="'"+s;return /[",\r\n]/.test(s)?'"'+s.replaceAll('"','""')+'"':s};return '\ufeff'+[headers,...rows].map(row=>row.map(escape).join(',')).join('\r\n')}
+const blankArm=()=>({users:0,conversions:0,impressions:0});
+function add(arm,row){arm.users++;arm.conversions+=row[2];arm.impressions+=row[3];}
+export function inspectData(parsed){
+ const arms=[blankArm(),blankArm()],all=blankArm(),ids=new Set(),issues=[],valid=[];
+ const audit={rows:parsed.rows.length,duplicateIds:0,invalidRows:0,blankRows:0,missingCells:0,minimumImpressions:null,maximumImpressions:null};
+ const splits={frequency:FREQUENCY_BINS.map(b=>({label:b[2],arms:[blankArm(),blankArm()]})),day:Array.from({length:7},(_,i)=>({label:['周一','周二','周三','周四','周五','周六','周日'][i],arms:[blankArm(),blankArm()]})),hour:Array.from({length:24},(_,i)=>({label:`${i}:00`,arms:[blankArm(),blankArm()]}))};
+ for(const r of parsed.rows){
+  const errors=[],c=r.cells,n=c.map(Number);
+  if(c.every(x=>x===''))audit.blankRows++;
+  audit.missingCells+=c.filter(x=>x.trim()==='').length;
+  if(c.length!==6)errors.push('列数不是 6');
+  if(c.some(x=>x.trim()===''))errors.push('存在空单元格');
+  if(!/^\d+$/.test(c[0]||''))errors.push('用户 ID 非整数');
+  if(ids.has(c[0])){audit.duplicateIds++;errors.push('重复用户 ID');}ids.add(c[0]);
+  if(![0,1].includes(n[1])||!['0','1'].includes(c[1]?.trim()))errors.push('test 不在 0/1');
+  if(![0,1].includes(n[2])||!['0','1'].includes(c[2]?.trim()))errors.push('converted 不在 0/1');
+  if(!Number.isSafeInteger(n[3])||n[3]<0)errors.push('曝光次数无效');
+  if(!Number.isInteger(n[4])||n[4]<1||n[4]>7)errors.push('星期不在 1–7');
+  if(!Number.isInteger(n[5])||n[5]<0||n[5]>23)errors.push('小时不在 0–23');
+  if(errors.length){audit.invalidRows++;issues.push({line:r.line,errors});continue;}
+  valid.push(r);add(all,n);add(arms[n[1]],n);
+  audit.minimumImpressions=audit.minimumImpressions===null?n[3]:Math.min(audit.minimumImpressions,n[3]);audit.maximumImpressions=Math.max(audit.maximumImpressions??0,n[3]);
+  const bin=FREQUENCY_BINS.findIndex(([lo,hi])=>n[3]>=lo&&n[3]<=hi);
+  if(bin>=0)add(splits.frequency[bin].arms[n[1]],n);
+  add(splits.day[n[4]-1].arms[n[1]],n);add(splits.hour[n[5]].arms[n[1]],n);
+ }
+ const usable=audit.invalidRows===0&&all.users>0&&arms.every(a=>a.users>0);
+ return {all,arms,audit,issues,splits,usable,validRows:valid.length};
+}
+export function rawQuery(parsed,{arm='',converted='',query='',page=0,size=30,issues=null}={}){
+ const q=query.toLowerCase().trim(),bad=issues?new Set(issues.map(x=>x.line)):null;
+ const filtered=parsed.rows.filter(r=>(arm===''||r.cells[1]===arm)&&(converted===''||r.cells[2]===converted)&&(!q||r.cells.some(x=>x.toLowerCase().includes(q))||String(r.line)===q)&&(!bad||bad.has(r.line)));
+ const pages=Math.max(1,Math.ceil(filtered.length/size)),p=Math.min(pages-1,Math.max(0,Number(page)||0));
+ return {total:filtered.length,page:p,pages,rows:filtered.slice(p*size,(p+1)*size),headers:parsed.headers};
+}
+export function csvEncode(cells){return cells.map(x=>`"${String(x).replaceAll('"','""')}"`).join(',');}
+export function exportRaw(parsed,filters={}){const rows=rawQuery(parsed,{...filters,page:0,size:Number.MAX_SAFE_INTEGER}).rows;return [csvEncode(['source_row',...parsed.headers]),...rows.map(r=>csvEncode([r.line,...r.cells]))].join('\r\n');}
+export function ratio(a,b){return Number.isFinite(a)&&Number.isFinite(b)&&b!==0?a/b:null;}

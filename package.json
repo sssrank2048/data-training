@@ -1,6 +1,6 @@
 {
-  "name": "air-france-advertising-lab",
-  "version": "0.1.0",
+  "name": "advertising-incrementality-course",
+  "version": "0.2.0",
   "private": true,
   "type": "module",
   "scripts": {
@@ -8,8 +8,11 @@
     "start": "node scripts/serve.mjs",
     "test": "node --test tests/*.test.mjs",
     "check": "node scripts/check.mjs",
-    "data:download": "node scripts/download-case.mjs",
-    "data:inspect": "node scripts/inspect-data.mjs"
+    "data:download": "node scripts/download-rocket.mjs",
+    "data:inspect": "node scripts/inspect-rocket.mjs",
+    "legacy:download": "node scripts/download-case.mjs",
+    "legacy:inspect": "node scripts/inspect-data.mjs",
+    "course:export": "node scripts/export-course.mjs"
   },
   "engines": {
     "node": ">=20"

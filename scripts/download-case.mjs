@@ -1,6 +1,6 @@
 import { readFile, mkdir, writeFile, rename, rm } from 'node:fs/promises';
 import { createHash } from 'node:crypto';
-import { caseFile } from '../dist/assets/case-source.mjs';
+import { caseFile } from '../dist/reference/air-france/assets/case-source.mjs';
 
 const directory = new URL('../data/private/', import.meta.url);
 const destination = new URL(caseFile.filename, directory);
