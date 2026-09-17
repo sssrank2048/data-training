@@ -2,15 +2,19 @@
 
 基于 Berkeley Haas **Rocket Fuel: Measuring the Effectiveness of Online Advertising（B5894）** 的 120 分钟课程网站。中文题目和参考答案为教学改编，数据使用既有案例的公开镜像，不自行生成经营记录。
 
-本地运行：
+本地运行（Node.js 20 或更高版本）：
 
 ```sh
-npm run data:download
-npm run data:inspect
-npm run dev
+npm start
 ```
 
 访问 **http://127.0.0.1:4317/**。仅绑定本机，不发布至 Sites。
+
+首次启动会从固定公开镜像下载完整 CSV 到 `data/private`，核验文件长度和 SHA-256 后使用；已有正确文件直接复用。`npm run dev` 同样会准备数据。下载使用 Node 自带能力，无需 curl、unzip 或额外 npm 依赖。
+
+**换环境时数据不会随 Git 或 dist 一起带过去。** 拉取完整项目后运行上面的命令即可准备主案例数据。网络受限时，可先用 `npm run serve` 启动，在“数据与原始明细”页从镜像加载或手动导入。仅有 dist 的静态环境没有本地数据端点，需要使用这两个入口；浏览器加载的 CSV 不会写入服务器，刷新后需重新加载。
+
+单独准备与检查：`npm run data:download` → `npm run data:check` → `npm run data:inspect`。下载失败不会写入半成品；已有文件不匹配时保留原文件，先核对并重命名备份再重试。详见 [换环境运行与数据准备](docs/environment-setup.md)。
 
 ## 课程
 

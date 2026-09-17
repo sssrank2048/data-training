@@ -18,7 +18,7 @@ let worker=new Worker('/assets/data-worker.mjs',{type:'module'}),requestId=0;con
 worker.onmessage=({data})=>{const p=pending.get(data.id);if(!p)return;if(data.progress){updateStatus();return;}pending.delete(data.id);data.error?p.reject(Error(data.error)):p.resolve(data.result);};
 worker.onerror=()=>{for(const p of pending.values())p.reject(Error('数据计算进程异常，请刷新页面后重新导入'));pending.clear();};
 const ask=(type,payload)=>new Promise((resolve,reject)=>{const id=++requestId;pending.set(id,{resolve,reject});worker.postMessage({id,type,payload});});
-async function loadData(file){if(state.busy)return;state.busy=true;state.loadError='';updateStatus();try{if(file&&file.size>40*1024*1024)throw Error('请使用不超过 40 MiB 的案例 CSV');const payload=file?{buffer:await file.arrayBuffer(),filename:file.name}:{url:caseFile.local,expectedHash:caseFile.sha256,expectedBytes:caseFile.bytes};const result=await ask('load',payload);state.summary=result.summary;state.meta=result.meta;state.raw=result.raw;state.filters={arm:'',converted:'',query:'',onlyIssues:false};if(state.meta.hash!==caseFile.sha256)toast('当前文件与固定镜像不同；分析按导入文件计算，旧证据需要重新核对。');else if(!state.summary.usable)toast('文件已载入，但存在质量问题；请到数据页检查原始行。');}catch(error){state.loadError=error.message;toast(error.message);}finally{state.busy=false;render();}}
+async function loadData(file,source='local'){if(state.busy)return;state.busy=true;state.loadError='';if(page()==='data')render();else updateStatus();try{if(file&&file.size>40*1024*1024)throw Error('请使用不超过 40 MiB 的案例 CSV');const payload=file?{buffer:await file.arrayBuffer(),filename:file.name}:{url:source==='mirror'?caseFile.url:caseFile.local,source,expectedHash:caseFile.sha256,expectedBytes:caseFile.bytes};const result=await ask('load',payload);state.summary=result.summary;state.meta={...result.meta,source:file?'import':source};state.raw=result.raw;state.filters={arm:'',converted:'',query:'',onlyIssues:false};if(state.meta.hash!==caseFile.sha256)toast('当前文件与固定镜像不同；分析按导入文件计算，旧证据需要重新核对。');else if(!state.summary.usable)toast('文件已载入，但存在质量问题；请到数据页检查原始行。');}catch(error){state.loadError=error.message;toast(error.message);}finally{state.busy=false;render();}}
 async function download(text,name,type='text/plain;charset=utf-8'){
  const response=await fetch('/__local/export',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({filename:name,body:text})});
  if(!response.ok)throw Error('本机导出未完成，请确认服务正在运行后重试');
@@ -51,6 +51,7 @@ document.addEventListener('submit',async event=>{event.preventDefault();const f=
  }catch(error){toast(error.message);}});
 document.addEventListener('click',async event=>{const button=event.target.closest('[data-action]');if(!button)return;const action=button.dataset.action;try{
  if(action==='load')await loadData();
+ if(action==='load-mirror')await loadData(null,'mirror');
  if(action==='import-csv')document.querySelector('#csv-file').click();
  if(action==='raw-prev')await queryRaw(state.raw.page-1);
  if(action==='raw-next')await queryRaw(state.raw.page+1);
