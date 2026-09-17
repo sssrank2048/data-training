@@ -1,4 +1,8 @@
 import {spawn} from 'node:child_process';
+import http from 'node:http';
+import https from 'node:https';
+import {createGunzip,createInflate,createBrotliDecompress} from 'node:zlib';
+import {pipeline} from 'node:stream';
 
 const supportedProxies=new Set(['http:','https:','socks4:','socks4a:','socks5:','socks5h:']);
 
@@ -24,15 +28,15 @@ function curlFailure(code,status,proxyStatus){
  if(code===28)return new DOMException('代理下载超时，请检查代理连接或稍后重试。','TimeoutError');
  if([5,6].includes(code))return Error('代理或镜像域名解析失败；使用 SOCKS 代理时可尝试 socks5h://，由代理解析域名。');
  if(code===7)return Error('无法连接代理或目标地址，请确认代理程序已运行、地址与端口正确，且当前运行环境能够访问该代理。');
- if([35,51,58,60,77,83,90,91].includes(code))return Error('TLS / 证书校验失败。若代理使用企业证书，请用 CURL_CA_BUNDLE 配置可信 CA 文件；保持证书校验开启。');
+ if([35,51,58,60,77,83,90,91].includes(code))return Error('TLS 连接失败；本下载器已跳过服务器和 HTTPS 代理证书校验，请检查代理协议、端口或客户端证书配置。');
  if(status&&Number(status)>=400)return Error(`镜像下载返回 HTTP ${status}；请检查代理规则是否允许访问 raw.githubusercontent.com。`);
  return Error(`代理下载失败（curl 退出码 ${code??'未知'}），请检查代理连通性和访问规则。`);
 }
 
 async function* curlBody(url,{signal,env,command,timeoutMs}){
  signal?.throwIfAborted();
- // -q must be first: ignore curlrc options that could alter TLS verification or write data elsewhere.
- const args=['-q','--fail','--location','--compressed','--silent','--show-error','--proto','=http,https','--proto-redir','=https','--connect-timeout','25','--max-time',String(Math.max(1,timeoutMs/1000)),'--write-out','%{stderr}\nCOURSE_HTTP_STATUS:%{http_code};COURSE_PROXY_STATUS:%{http_connect}\n',url];
+ // -q must be first. The user requested certificate bypass for this dataset download only.
+ const args=['-q','--insecure','--proxy-insecure','--fail','--location','--compressed','--silent','--show-error','--proto','=http,https','--proto-redir','=https','--connect-timeout','25','--max-time',String(Math.max(1,timeoutMs/1000)),'--write-out','%{stderr}\nCOURSE_HTTP_STATUS:%{http_code};COURSE_PROXY_STATUS:%{http_connect}\n',url];
  const child=spawn(command,args,{env,stdio:['ignore','pipe','pipe'],windowsHide:true});
  let stderr='';child.stderr.on('data',chunk=>{stderr=(stderr+chunk.toString()).slice(-8192);});
  const done=new Promise(resolve=>{child.once('error',error=>resolve({error}));child.once('close',code=>resolve({code}));});
@@ -50,9 +54,39 @@ async function* curlBody(url,{signal,env,command,timeoutMs}){
  }
 }
 
-export function createDownloadFetcher({env=process.env,log=console.log,timeoutMs=900000,curlCommand='curl',directFetch=fetch}={}){
+async function directDownload(url,{signal}={},redirects=5){
+ const address=new URL(url);
+ if(!['http:','https:'].includes(address.protocol))throw Error('Unsupported dataset protocol');
+ const response=await new Promise((resolve,reject)=>{
+  // A per-request agent keeps the requested bypass out of the global TLS configuration.
+  const request=(address.protocol==='https:'?https:http).get(address,{agent:false,rejectUnauthorized:false,signal,headers:{'Accept-Encoding':'gzip,deflate,br'}},resolve);
+  request.on('error',reject);
+ });
+ if([301,302,303,307,308].includes(response.statusCode)&&response.headers.location){
+  response.destroy();
+  const next=new URL(response.headers.location,address);
+  if(redirects===0||next.protocol!=='https:')throw Error('Invalid dataset redirect');
+  return directDownload(next,{signal},redirects-1);
+ }
+ if(response.statusCode<200||response.statusCode>=300){response.destroy();return {ok:false,status:response.statusCode,body:null};}
+ const decoders={gzip:createGunzip,deflate:createInflate,br:createBrotliDecompress};
+ const encoding=response.headers['content-encoding']?.toLowerCase();
+ let body=response;
+ if(encoding&&encoding!=='identity'){
+  if(!Object.hasOwn(decoders,encoding)){response.destroy();throw Error('Unsupported dataset encoding');}
+  body=decoders[encoding]();pipeline(response,body,()=>{});
+ }
+ const stream=(async function*(){
+  try{for await(const chunk of body){signal?.throwIfAborted();yield chunk;}}
+  catch(error){signal?.throwIfAborted();throw error;}
+ })();
+ return {ok:true,status:response.statusCode,body:stream};
+}
+
+export function createDownloadFetcher({env=process.env,log=console.log,timeoutMs=900000,curlCommand='curl',directFetch=directDownload}={}){
  return async(url,{signal}={})=>{
   const proxy=proxyConfiguration(url,env);
+  log('案例下载已跳过 HTTPS 证书校验；文件长度和 SHA-256 校验仍然保留。');
   if(proxy){
    log(`检测到 ${proxy.variable}，使用 curl 处理代理，并遵守 NO_PROXY / no_proxy 绕过规则（不输出代理地址或凭据）。`);
    return {ok:true,body:curlBody(url,{signal,env:proxy.childEnv,command:curlCommand,timeoutMs})};

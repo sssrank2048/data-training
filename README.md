@@ -18,6 +18,8 @@ npm start
 
 **代理环境出现 `fetch failed`：** 更新代码后，已设置的 `HTTPS_PROXY` / `https_proxy` 或 `ALL_PROXY` / `all_proxy` 会自动用于下载。若只开启了系统或浏览器代理，需要在终端显式指定。例如 macOS / Linux：`COURSE_DATA_PROXY="http://127.0.0.1:7890" npm run data:download`（地址和端口替换为实际代理，7890 仅为示例）。代理模式需要 `curl --version` 可用；完整配置及 Windows 命令见[代理环境说明](docs/environment-setup.md#代理环境与-fetch-failed)。
 
+按当前要求，主案例 npm 下载器已跳过 HTTPS 服务器及 HTTPS 代理证书校验，无需额外开关；固定文件长度和 SHA-256 校验仍然执行。此设置只作用于案例下载请求，不修改全局 Node TLS 配置或浏览器设置；下载连接不再验证服务器证书身份。
+
 ## 课程
 
 案例故事 → 本节课任务与数据 → 指标体系 → 增量验证 → 经营决策 → 下一轮实验 → 小组答辩。

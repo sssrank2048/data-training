@@ -6,6 +6,7 @@ import net from 'node:net';
 import {spawnSync,execFileSync} from 'node:child_process';
 import {mkdir,mkdtemp,readFile,readdir,rm} from 'node:fs/promises';
 import {createHash} from 'node:crypto';
+import {gzipSync} from 'node:zlib';
 import path from 'node:path';
 import {proxyConfiguration,createDownloadFetcher} from '../scripts/download-transport.mjs';
 import {prepareCaseData,privateRoot} from '../scripts/case-data.mjs';
@@ -44,6 +45,20 @@ test('direct transport remains available and explains the generic fetch failed e
  const logs=[];let called=false;
  const request=createDownloadFetcher({env:{},log:s=>logs.push(s),directFetch:async()=>{called=true;throw TypeError('fetch failed');}});
  await assert.rejects(request(manifest.url),/HTTPS_PROXY.*COURSE_DATA_PROXY/);assert.ok(called);assert.match(logs.join(''),/未检测到/);
+});
+
+test('native direct requests report HTTP failures and clean partial or invalid compressed downloads',async t=>{
+ const origin=http.createServer((req,res)=>{
+  if(req.url==='/missing'){res.writeHead(404);res.flushHeaders();return;}
+  if(req.url==='/slow'){res.writeHead(200);res.write(body.subarray(0,5));return;}
+  res.writeHead(200,{'Content-Encoding':'gzip'});res.end('invalid compressed transport fixture');
+ });
+ const port=await listen(t,origin),fetcher=createDownloadFetcher({env:{},log:()=>{}});
+ for(const [route,error] of [['missing',/HTTP 404/],['slow',/下载超时/],['broken',/header|compression|data/i]]){
+  const directory=await folder(t);
+  await assert.rejects(prepareCaseData({directory,manifest:{...manifest,url:`http://127.0.0.1:${port}/${route}`},fetcher,log:()=>{},timeoutMs:200}),error);
+  assert.deepEqual(await readdir(directory),[]);
+ }
 });
 
 test('HTTP proxy downloads through the configured proxy with credentials, without logging them', {skip:!hasCurl},async t=>{
@@ -85,24 +100,33 @@ test('proxy timeout aborts the child download and cleans incomplete files', {ski
  assert.deepEqual(await readdir(directory),[]);
 });
 
-test('complete real case downloads over HTTPS CONNECT with trusted test CA and keeps the pinned hash', {skip:!hasCurl||!hasOpenSSL},async t=>{
+test('direct and proxied HTTPS downloads skip certificates locally while preserving the complete file hash', {skip:!hasCurl||!hasOpenSSL},async t=>{
  const directory=await folder(t),key=path.join(directory,'key.pem'),cert=path.join(directory,'cert.pem');
  execFileSync('openssl',['req','-x509','-newkey','rsa:2048','-nodes','-keyout',key,'-out',cert,'-days','1','-subj','/CN=localhost','-addext','subjectAltName=DNS:localhost'],{stdio:'ignore'});
  const original=await readFile(path.join(privateRoot,caseFile.filename));
- const origin=https.createServer({key:await readFile(key),cert:await readFile(cert)},(req,res)=>res.end(original));
+ const tls={key:await readFile(key),cert:await readFile(cert)},compressed=gzipSync(original);
+ const origin=https.createServer(tls,(req,res)=>{
+  if(req.url==='/redirect'){res.writeHead(302,{Location:'/rocketfuel_data.csv'});res.end();return;}
+  res.setHeader('Content-Encoding','gzip');res.end(req.url==='/corrupt'?gzipSync(Buffer.alloc(original.length)):compressed);
+ });
  const originPort=await listen(t,origin);let connects=0;
- const proxy=http.createServer();proxy.on('connect',(req,socket,head)=>{
+ const connect=(req,socket,head)=>{
   assert.equal(req.url,`localhost:${originPort}`);connects++;
   const upstream=net.connect(originPort,'127.0.0.1',()=>{socket.write('HTTP/1.1 200 Connection Established\r\n\r\n');if(head.length)upstream.write(head);socket.pipe(upstream);upstream.pipe(socket);});
   upstream.on('error',()=>socket.destroy());socket.on('error',()=>upstream.destroy());socket.on('close',()=>upstream.destroy());
- });
- const proxyPort=await listen(t,proxy),url=`https://localhost:${originPort}/rocketfuel_data.csv`;
- const untrusted=createDownloadFetcher({env:environment({HTTPS_PROXY:`http://127.0.0.1:${proxyPort}`,CURL_CA_BUNDLE:'',SSL_CERT_FILE:''}),log:()=>{}});
- await assert.rejects(prepareCaseData({directory:path.join(directory,'untrusted'),manifest:{...caseFile,url},fetcher:untrusted,log:()=>{}}),/证书校验失败/);
- assert.deepEqual(await readdir(path.join(directory,'untrusted')),[]);
- const fetcher=createDownloadFetcher({env:environment({HTTPS_PROXY:`http://127.0.0.1:${proxyPort}`,CURL_CA_BUNDLE:cert}),log:()=>{}});
- const result=await prepareCaseData({directory:path.join(directory,'download'),manifest:{...caseFile,url},fetcher,log:()=>{}});
- assert.equal(connects,2);assert.equal(result.bytes,12024311);assert.equal(result.hash,caseFile.sha256);assert.equal(result.status,'verified');
+ };
+ const proxy=http.createServer(),secureProxy=https.createServer(tls);proxy.on('connect',connect);secureProxy.on('connect',connect);
+ const proxyPort=await listen(t,proxy),secureProxyPort=await listen(t,secureProxy),url=`https://localhost:${originPort}/rocketfuel_data.csv`;
+ const before=process.env.NODE_TLS_REJECT_UNAUTHORIZED;
+ for(const [name,proxyURL] of [['direct',''],['http-proxy',`http://127.0.0.1:${proxyPort}`],['https-proxy',`https://127.0.0.1:${secureProxyPort}`]]){
+  const fetcher=createDownloadFetcher({env:environment({HTTPS_PROXY:proxyURL,CURL_CA_BUNDLE:'',SSL_CERT_FILE:''}),log:()=>{}});
+  const result=await prepareCaseData({directory:path.join(directory,name),manifest:{...caseFile,url:name==='direct'?`https://localhost:${originPort}/redirect`:url},fetcher,log:()=>{}});
+  assert.equal(result.bytes,12024311);assert.equal(result.hash,caseFile.sha256);assert.equal(result.status,'verified');
+  await assert.rejects(prepareCaseData({directory:path.join(directory,name+'-corrupt'),manifest:{...caseFile,url:`https://localhost:${originPort}/corrupt`},fetcher,log:()=>{}}),/SHA-256 不符/);
+  assert.deepEqual(await readdir(path.join(directory,name+'-corrupt')),[]);
+ }
+ assert.equal(connects,4);assert.equal(process.env.NODE_TLS_REJECT_UNAUTHORIZED,before);
+ await assert.rejects(new Promise((resolve,reject)=>{https.get(url,{agent:false},response=>{response.destroy();resolve();}).on('error',reject);}),/self.signed/i);
 });
 
 test('SOCKS5h forwards hostname resolution to the proxy and can download verified data', {skip:!hasCurl},async t=>{
