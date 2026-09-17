@@ -3,6 +3,7 @@ import {createHash,randomUUID} from 'node:crypto';
 import {fileURLToPath} from 'node:url';
 import path from 'node:path';
 import {caseFile} from '../dist/assets/case-source.mjs';
+import {createDownloadFetcher} from './download-transport.mjs';
 
 export const privateRoot=fileURLToPath(new URL('../data/private/',import.meta.url));
 
@@ -13,7 +14,7 @@ export async function checkCaseData({directory=privateRoot,manifest=caseFile}={}
  return {status:bytes.length===manifest.bytes&&hash===manifest.sha256?'verified':'mismatch',target,bytes:bytes.length,hash};
 }
 
-export async function prepareCaseData({directory=privateRoot,manifest=caseFile,fetcher=fetch,log=console.log,timeoutMs=900000}={}){
+export async function prepareCaseData({directory=privateRoot,manifest=caseFile,fetcher,log=console.log,timeoutMs=900000}={}){
  const options={directory,manifest},existing=await checkCaseData(options);
  if(existing.status==='verified'){log(`案例数据已核验：${existing.target}`);return existing;}
  if(existing.status==='mismatch')throw Error(`已有文件的长度或 SHA-256 不符，已保留原文件：${existing.target}。请核对并将其重命名备份后，再执行 npm run data:download。`);
@@ -23,7 +24,8 @@ export async function prepareCaseData({directory=privateRoot,manifest=caseFile,f
  try{
   log(`正在下载固定公开教学镜像（不代表官方原件认证）：${manifest.url}`);
   log(`本次下载最多等待 ${Math.ceil(timeoutMs/60000)} 分钟；无需下载时可使用 npm run serve。`);
-  const response=await fetcher(manifest.url,{signal:AbortSignal.timeout(timeoutMs)});
+  const request=fetcher||createDownloadFetcher({log,timeoutMs});
+  const response=await request(manifest.url,{signal:AbortSignal.timeout(timeoutMs)});
   if(!response.ok)throw Error(`镜像下载返回 HTTP ${response.status}`);
   if(!response.body)throw Error('镜像未返回文件内容');
   handle=await open(temporary,'wx');

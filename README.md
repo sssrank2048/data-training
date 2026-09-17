@@ -10,11 +10,13 @@ npm start
 
 访问 **http://127.0.0.1:4317/**。仅绑定本机，不发布至 Sites。
 
-首次启动会从固定公开镜像下载完整 CSV 到 `data/private`，核验文件长度和 SHA-256 后使用；已有正确文件直接复用。`npm run dev` 同样会准备数据。下载使用 Node 自带能力，无需 curl、unzip 或额外 npm 依赖。
+首次启动会从固定公开镜像下载完整 CSV 到 `data/private`，核验文件长度和 SHA-256 后使用；已有正确文件直接复用。`npm run dev` 同样会准备数据。直连使用 Node；检测到代理环境变量时使用系统 curl，支持 HTTP / HTTPS / SOCKS 代理及 NO_PROXY。无需 unzip 或额外 npm 依赖。
 
 **换环境时数据不会随 Git 或 dist 一起带过去。** 拉取完整项目后运行上面的命令即可准备主案例数据。网络受限时，可先用 `npm run serve` 启动，在“数据与原始明细”页从镜像加载或手动导入。仅有 dist 的静态环境没有本地数据端点，需要使用这两个入口；浏览器加载的 CSV 不会写入服务器，刷新后需重新加载。
 
 单独准备与检查：`npm run data:download` → `npm run data:check` → `npm run data:inspect`。下载失败不会写入半成品；已有文件不匹配时保留原文件，先核对并重命名备份再重试。详见 [换环境运行与数据准备](docs/environment-setup.md)。
+
+**代理环境出现 `fetch failed`：** 更新代码后，已设置的 `HTTPS_PROXY` / `https_proxy` 或 `ALL_PROXY` / `all_proxy` 会自动用于下载。若只开启了系统或浏览器代理，需要在终端显式指定。例如 macOS / Linux：`COURSE_DATA_PROXY="http://127.0.0.1:7890" npm run data:download`（地址和端口替换为实际代理，7890 仅为示例）。代理模式需要 `curl --version` 可用；完整配置及 Windows 命令见[代理环境说明](docs/environment-setup.md#代理环境与-fetch-failed)。
 
 ## 课程
 
